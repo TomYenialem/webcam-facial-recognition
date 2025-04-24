@@ -49,12 +49,21 @@ const WebcamFeed: React.FC = () => {
     setIsWebcamActive(true);
   };
 
-  const stopWebcam = () => {
-    const stream = videoRef.current?.srcObject as MediaStream;
+const stopWebcam = () => {
+  const stream = videoRef.current?.srcObject as MediaStream;
+
+  if (stream) {
     const tracks = stream.getTracks();
     tracks.forEach((track) => track.stop());
-    setIsWebcamActive(false);
-  };
+  }
+
+  if (videoRef.current) {
+    videoRef.current.srcObject = null; 
+  }
+
+  setIsWebcamActive(false);
+};
+
 
   return (
     <div className="webcam-container">
