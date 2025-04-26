@@ -1,7 +1,17 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect ,useState} from "react";
 import * as faceapi from "face-api.js";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import { setFaces, setWebcamActive } from "../store/faceDetectionSlice";
+import { FaCamera, FaStop, FaUpload, FaSpinner } from "react-icons/fa"; 
+
+import {
+  FaVideo,
+  FaUserCheck,
+  FaImage,
+  FaUserTag,
+  FaUsers,
+  FaSmileBeam,
+} from "react-icons/fa";
 
 // Color palette for different faces
 const FACE_COLORS = [
@@ -20,6 +30,7 @@ const FACE_COLORS = [
 ];
 
 const WebcamFeed: React.FC = () => {
+  const [isProcessing, setIsProcessing] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dispatch = useAppDispatch();
@@ -181,6 +192,7 @@ const WebcamFeed: React.FC = () => {
       } catch (error) {
         console.error("Error detecting faces:", error);
       }
+    
     };
 
     if (isWebcamActive) {
@@ -228,6 +240,8 @@ const WebcamFeed: React.FC = () => {
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
+    if (isProcessing) return; // Prevent multiple uploads at once
+    setIsProcessing(true); // Set processing state
 
     const file = e.target.files[0];
     const image = await faceapi.bufferToImage(file);
@@ -335,139 +349,233 @@ const WebcamFeed: React.FC = () => {
     } catch (error) {
       console.error("Error processing image:", error);
     }
+    finally {
+      setIsProcessing(false); // Reset processing state
+    }
+    
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex flex-col md:flex-row gap-8">
-        {/* Webcam/Image Display */}
-        <div className="flex-1">
-          <div className="flex gap-4 mb-4">
+    <div className="container py-5">
+      <div className="row">
+        {/* Left Side: Webcam and Controls */}
+        <div className="col-12 col-md-6 d-flex flex-column align-items-center">
+          <div className="d-flex gap-3 mb-4">
             <button
-              className="btn btn-primary"
+              className="btn btn-primary d-flex align-items-center gap-2"
               onClick={startWebcam}
-              disabled={isWebcamActive}
+              disabled={isWebcamActive || isProcessing}
             >
-              Start Webcam
+              {isProcessing ? (
+                <>
+                  <FaSpinner className="fa-spin" />
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <FaCamera />
+                  Start Webcam
+                </>
+              )}
             </button>
+
             <button
-              className="btn btn-danger"
+              className="btn btn-danger d-flex align-items-center gap-2"
               onClick={stopWebcam}
               disabled={!isWebcamActive}
             >
+              <FaStop />
               Stop Webcam
             </button>
-            <label className="btn btn-secondary">
-              Upload Image
+
+            <label
+              className={`btn btn-secondary d-flex align-items-center gap-2 mb-0 ${
+                isProcessing ? "disabled" : ""
+              }`}
+            >
+              {isProcessing ? (
+                <>
+                  <FaSpinner className="fa-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <FaUpload />
+                  Upload Image
+                </>
+              )}
               <input
                 type="file"
                 accept="image/*"
                 onChange={handleImageUpload}
-                className="hidden"
+                className="d-none"
+                disabled={isProcessing}
               />
             </label>
           </div>
 
-          <div className="relative">
+          <div className="position-relative w-100">
             <video
               ref={videoRef}
-              width="640"
-              height="480"
+              width="100%"
+              height="280"
               autoPlay
               muted
               playsInline
-              className="rounded-lg border-2 border-gray-300 w-full"
+              className="rounded border border-secondary w-100"
               style={{ display: isWebcamActive ? "block" : "none" }}
             />
             <canvas
               ref={canvasRef}
-              className="rounded-lg border-2 border-gray-300 w-full absolute top-0 left-0"
+              className="rounded border border-secondary w-100 position-absolute top-0 start-0"
               style={{
                 display: isWebcamActive || faces.length > 0 ? "block" : "none",
               }}
             />
             {!isWebcamActive && faces.length === 0 && (
-              <div className="w-full h-96 bg-gray-100 rounded-lg border-2 border-gray-300 flex items-center justify-center">
-                <p className="text-gray-500">
-                  Webcam or uploaded image will appear here
-                </p>
+              <div
+                className="w-100 h-100 bg-light rounded border border-secondary d-flex align-items-center justify-content-center"
+                style={{ height: "480px" }}
+              >
+                {isProcessing && (
+                  <div className="text-center">
+                    <FaSpinner className="fa-spin fs-1 mb-3" />
+                    <p>Processing image...</p>
+                  </div>
+                ) }
               </div>
             )}
           </div>
         </div>
 
-        {/* Results Panel */}
-        <div className="flex-1">
-          <h2 className="text-xl font-bold mb-4">
-            Detected Faces {faces.length > 0 && `(${faces.length})`}
+        {/* Right Side: Results */}
+        <div className="col-12 col-md-6 d-flex flex-column">
+          <h2 className="h4 mb-4">
+            {isProcessing ? (
+              <span className="d-flex align-items-center gap-2">
+                <FaSpinner className="fa-spin" />
+                Analyzing...
+              </span>
+            ) : faces.length > 0 ? (
+              `Detected Faces (${faces.length})`
+            ) : (
+              "Detection Results"
+            )}
           </h2>
 
-          {faces.length === 0 ? (
-            <div className="bg-gray-100 p-4 rounded-lg">
-              <p>No faces detected yet. Start webcam or upload an image.</p>
+          {isProcessing ? (
+            <div className="bg-white p-4 rounded shadow-lg text-center">
+              <FaSpinner className="fa-spin fs-1 mb-3" />
+              <p>Processing face detection...</p>
+              <div className="progress mt-3">
+                <div
+                  className="progress-bar progress-bar-striped progress-bar-animated"
+                  style={{ width: "75%" }}
+                ></div>
+              </div>
+            </div>
+          ) : faces.length === 0 ? (
+            <div
+              className="bg-white p-4 rounded shadow-lg"
+              style={{
+                background:
+                  "linear-gradient(to right, #48bb78, #3b82f6, #9333ea)",
+                boxShadow: "0 8px 16px rgba(20, 152, 137, 0.15)",
+              }}
+            >
+              <h5 className="text-primary mb-3">
+                <i className="fas fa-info-circle me-2"></i> Application Features
+              </h5>
+              <ul className="list-unstyled text-start text-white">
+                <li className="mb-2 d-flex align-items-center">
+                  <FaVideo className="text-dark me-2" />
+                  Start and stop the <strong>webcam feed</strong> anytime.
+                </li>
+                <li className="mb-2 d-flex align-items-center">
+                  <FaUserCheck className="text-info text-dark me-2" />
+                  Perform <strong>facial recognition</strong> on captured
+                  images.
+                </li>
+                <li className="mb-2 d-flex align-items-center">
+                  <FaImage className="text-dark me-2" />
+                  Display <strong>captured images</strong> with face overlays.
+                </li>
+                <li className="mb-2 d-flex align-items-center">
+                  <FaUserTag className="text-dark me-2" />
+                  Show details like <strong>name, age, gender</strong> and more.
+                </li>
+                <li className="mb-2 d-flex align-items-center">
+                  <FaUsers className="text-dark me-2" />
+                  Detect and display <strong>multiple faces</strong> in one
+                  image.
+                </li>
+                <li className="mb-2 d-flex align-items-center">
+                  <FaSmileBeam className="text-dark me-2" />
+                  Analyze <strong>emotions</strong> and expressions of detected
+                  faces.
+                </li>
+              </ul>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="d-flex flex-column gap-3">
               {faces.map((face: any, index) => (
                 <div
                   key={index}
-                  className="bg-white p-4 rounded-lg shadow"
+                  className="bg-white p-3 rounded shadow"
                   style={{
                     borderLeft: `4px solid ${
                       FACE_COLORS[index % FACE_COLORS.length]
                     }`,
                   }}
                 >
-                  <div className="flex items-start gap-4">
+                  <div className="d-flex align-items-start gap-3">
                     <div
-                      className="text-white rounded-full w-8 h-8 flex items-center justify-center"
+                      className="rounded-circle d-flex align-items-center justify-content-center text-white"
                       style={{
                         backgroundColor:
                           FACE_COLORS[index % FACE_COLORS.length],
+                        width: "32px",
+                        height: "32px",
                       }}
                     >
                       {index + 1}
                     </div>
 
-                    <div className="flex-1">
-                      <div className="grid grid-cols-2 gap-4 mb-3">
-                        <div>
-                          <p className="font-semibold text-sm text-gray-500">
-                            Age
-                          </p>
-                          <p className="text-lg">
-                            {Math.round(face.age)} years
-                          </p>
+                    <div className="flex-grow-1">
+                      <div className="row mb-2">
+                        <div className="col-6">
+                          <small className="text-muted">Age</small>
+                          <div>{Math.round(face.age)} years</div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-sm text-gray-500">
-                            Gender
-                          </p>
-                          <p className="text-lg">
+                        <div className="col-6">
+                          <small className="text-muted">Gender</small>
+                          <div>
                             {face.gender} (
                             {Math.round(face.genderProbability * 100)}%)
-                          </p>
+                          </div>
                         </div>
                       </div>
 
                       <div>
-                        <p className="font-semibold text-sm text-gray-500 mb-2">
-                          Emotions
-                        </p>
-                        <div className="space-y-2">
+                        <small className="text-muted">Emotions</small>
+                        <div className="mt-2">
                           {Object.entries(face.expressions)
                             .sort((a, b) => b[1] - a[1])
                             .map(([emotion, value]) => (
-                              <div key={emotion}>
-                                <div className="flex justify-between text-sm">
-                                  <span className="capitalize">{emotion}</span>
+                              <div key={emotion} className="mb-1">
+                                <div className="d-flex justify-content-between">
+                                  <span>{emotion}</span>
                                   <span>
                                     {Math.round((value as number) * 100)}%
                                   </span>
                                 </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className="progress"
+                                  style={{ height: "5px" }}
+                                >
                                   <div
-                                    className="h-2 rounded-full"
+                                    className="progress-bar"
+                                    role="progressbar"
                                     style={{
                                       width: `${Math.round(
                                         (value as number) * 100
