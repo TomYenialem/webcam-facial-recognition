@@ -1,8 +1,8 @@
-// src/utils/WebcamFunctions.ts
 import { useAppDispatch } from "../store/hooks";
 import { setWebcamActive, setFaces } from "../store/faceDetectionSlice";
 import * as faceapi from "face-api.js";
 
+// Color constants for face bounding boxes and annotations
 export const FACE_COLORS = [
   "#FF5252",
   "#FF4081",
@@ -18,6 +18,7 @@ export const FACE_COLORS = [
   "#EEFF41",
 ] as const;
 
+// Type definition for face detection with age, gender, and expressions
 type FaceDetectionWithAllFeatures = faceapi.WithFaceExpressions<
   faceapi.WithAge<
     faceapi.WithGender<
@@ -31,6 +32,7 @@ type FaceDetectionWithAllFeatures = faceapi.WithFaceExpressions<
   >
 >;
 
+// Start webcam feed
 export const startWebcam = async (
   videoRef: React.RefObject<HTMLVideoElement>,
   dispatch: ReturnType<typeof useAppDispatch>
@@ -47,9 +49,7 @@ export const startWebcam = async (
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
       videoRef.current.onloadedmetadata = () => {
-        if (videoRef.current) {
-          videoRef.current.play();
-        }
+        videoRef.current?.play(); // Ensure video starts playing when metadata is loaded
       };
     }
     dispatch(setWebcamActive(true));
@@ -58,21 +58,23 @@ export const startWebcam = async (
   }
 };
 
+// Stop webcam feed
 export const stopWebcam = (
   videoRef: React.RefObject<HTMLVideoElement>,
   dispatch: ReturnType<typeof useAppDispatch>
 ): void => {
-  const stream = videoRef.current?.srcObject as MediaStream | undefined;
+  const stream = videoRef.current?.srcObject as MediaStream;
   if (stream) {
-    stream.getTracks().forEach((track) => track.stop());
+    stream.getTracks().forEach((track) => track.stop()); // Stop each track of the stream
   }
   if (videoRef.current) {
-    videoRef.current.srcObject = null;
+    videoRef.current.srcObject = null; // Clear the video source
   }
-  dispatch(setWebcamActive(false));
-  dispatch(setFaces([]));
+  dispatch(setWebcamActive(false)); // Update state to reflect webcam inactivity
+  dispatch(setFaces([])); // Reset faces detected
 };
 
+// Draw enhanced face expressions on the canvas
 const drawEnhancedExpressions = (
   canvas: HTMLCanvasElement,
   detection: FaceDetectionWithAllFeatures,
@@ -87,14 +89,14 @@ const drawEnhancedExpressions = (
   const [dominantExpression, maxProbability] = sortedExpressions[0];
 
   if (maxProbability > 0.2) {
-    faceapi.draw.drawFaceExpressions(canvas, [detection], 0.2);
+    faceapi.draw.drawFaceExpressions(canvas, [detection], 0.2); // Draw the expressions
 
     const box = detection.detection.box;
     ctx.fillStyle = `${color}CC`;
     ctx.strokeStyle = "white";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(box.x, box.y - 25, 120, 20, 4);
+    ctx.roundRect(box.x, box.y - 25, 120, 20, 4); // Draw the expression label background
     ctx.fill();
     ctx.stroke();
 
@@ -108,44 +110,46 @@ const drawEnhancedExpressions = (
   }
 };
 
+// Handle image upload and process face detection
 export const handleImageUpload = async (
   e: React.ChangeEvent<HTMLInputElement>,
   dispatch: ReturnType<typeof useAppDispatch>,
   setIsProcessing: React.Dispatch<React.SetStateAction<boolean>>,
   canvasRef: React.RefObject<HTMLCanvasElement>
 ): Promise<void> => {
-  if (!e.target.files?.length) return;
-  setIsProcessing(true);
+  if (!e.target.files?.length) return; // Return if no file is selected
+  setIsProcessing(true); // Set processing state to true while image is being processed
 
   const file = e.target.files[0];
-  const image = await faceapi.bufferToImage(file);
+  const image = await faceapi.bufferToImage(file); // Convert the file buffer to image
 
   try {
+    // Detect faces and apply face landmarks, age, gender, and expressions
     const detections = (await faceapi
       .detectAllFaces(image, new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks()
       .withAgeAndGender()
       .withFaceExpressions()) as FaceDetectionWithAllFeatures[];
 
-    dispatch(setFaces(detections as unknown as faceapi.FaceDetection[]));
+    dispatch(setFaces(detections as unknown as faceapi.FaceDetection[])); // Update the Redux store with detected faces
 
     const canvas = canvasRef.current;
     if (canvas) {
       const displaySize = { width: image.width, height: image.height };
-      faceapi.matchDimensions(canvas, displaySize);
+      faceapi.matchDimensions(canvas, displaySize); // Resize the canvas for the image dimensions
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas before drawing new image
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height); // Draw the image to canvas
 
         resizedDetections.forEach((detection, index) => {
           const color = FACE_COLORS[index % FACE_COLORS.length];
           const { age, gender, genderProbability } = detection;
           const box = detection.detection.box;
 
-          // Draw face box
+          // Draw face bounding box
           ctx.save();
           ctx.shadowColor = color;
           ctx.shadowBlur = 10;
@@ -158,13 +162,11 @@ export const handleImageUpload = async (
           ctx.fill();
           ctx.restore();
 
-          // Draw landmarks
+          // Draw face landmarks and expressions
           faceapi.draw.drawFaceLandmarks(canvas, [detection]);
-
-          // Draw expressions
           drawEnhancedExpressions(canvas, detection, color);
 
-          // Draw info box
+          // Draw information box with age, gender, etc.
           const infoBoxWidth = 180;
           const infoBoxHeight = 80;
           const infoBoxX = Math.max(10, box.x);
@@ -205,6 +207,6 @@ export const handleImageUpload = async (
   } catch (error) {
     console.error("Error processing image:", error);
   } finally {
-    setIsProcessing(false);
+    setIsProcessing(false); // Reset processing state after completion
   }
 };

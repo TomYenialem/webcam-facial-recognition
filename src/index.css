@@ -12,7 +12,8 @@ body{
 }
 @media (max-width: 768px) {
   .infos{
-   margin-top: 370px !important;
+   margin-top: 200px !important;
+   z-index: 1000 !important;
    
   }
 }

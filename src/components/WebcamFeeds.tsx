@@ -1,10 +1,10 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { FaCamera, FaStop, FaUpload, FaSpinner } from "react-icons/fa";
+import { startWebcam, stopWebcam, handleImageUpload } from "./WebcamFunctions";
+import FaceDetectionVisualization from "./FaceDetectionVisualization";
+import * as faceapi from "face-api.js";
 import {
-  FaCamera,
-  FaStop,
-  FaUpload,
-  FaSpinner,
   FaVideo,
   FaUserCheck,
   FaImage,
@@ -12,11 +12,18 @@ import {
   FaUsers,
   FaSmileBeam,
 } from "react-icons/fa";
-import { startWebcam, stopWebcam, handleImageUpload } from "./WebcamFunctions";
-import FaceDetectionVisualization from "./FaceDetectionVisualization";
-import * as faceapi from "face-api.js";
 
-const FACE_COLORS = [
+// Extending the FaceDetection type to include age, gender, and expressions
+interface ExtendedFaceDetection extends faceapi.FaceDetection {
+  age: number;
+  gender: string;
+  genderProbability: number;
+  expressions: {
+    [key: string]: number;
+  };
+}
+
+const FACE_COLORS: string[] = [
   "#FF5252",
   "#FF4081",
   "#E040FB",
@@ -32,43 +39,75 @@ const FACE_COLORS = [
 ];
 
 const WebcamFeeds: React.FC = () => {
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const dispatch = useAppDispatch();
-  const videoRef = useRef<HTMLVideoElement>(null!);
-  const canvasRef = useRef<HTMLCanvasElement>(null!);
-  const faces = useAppSelector((state) => state.faceDetection.faces);
-  const isWebcamActive = useAppSelector(
-    (state) => state.faceDetection.isWebcamActive
-  );
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Load face-api models
+  const { faces, isWebcamActive } = useAppSelector(
+    (state) => state.faceDetection
+  ) as unknown as { faces: ExtendedFaceDetection[]; isWebcamActive: boolean };
+
   useEffect(() => {
     const loadModels = async () => {
       try {
         await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
-          faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
-          faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
-          faceapi.nets.ageGenderNet.loadFromUri("/models"),
-          faceapi.nets.faceExpressionNet.loadFromUri("/models"),
+          faceapi.nets.tinyFaceDetector.loadFromUri(
+            "/models/tiny_face_detector"
+          ),
+          faceapi.nets.faceLandmark68Net.loadFromUri(
+            "/models/face_landmark_68"
+          ),
+          faceapi.nets.faceRecognitionNet.loadFromUri(
+            "/models/face_recognition"
+          ),
+          faceapi.nets.ageGenderNet.loadFromUri("/models/age_gender_model"),
+          faceapi.nets.faceExpressionNet.loadFromUri("/models/face_expression"),
         ]);
         console.log("All models loaded");
       } catch (error) {
         console.error("Failed to load models:", error);
       }
     };
+
     loadModels();
   }, []);
+
+const handleStartWebcam = () => {
+  // Pass the `videoRef` object, not `videoRef.current`
+  if (videoRef.current) {
+    if (videoRef.current) {
+      startWebcam(videoRef as React.RefObject<HTMLVideoElement>, dispatch); // Ensure non-null
+    }
+  }
+};
+
+const handleStopWebcam = () => {
+    if (videoRef.current) {
+      if (videoRef.current) {
+        stopWebcam(videoRef as React.RefObject<HTMLVideoElement>, dispatch); // Ensure non-null
+      }
+    }
+  }
+;
+
+  const handleImageUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (canvasRef.current) {
+      if (canvasRef.current) {
+        handleImageUpload(e, dispatch, setIsProcessing, canvasRef as React.RefObject<HTMLCanvasElement>);
+      }
+    }
+  };
 
   return (
     <div className="container py-5">
       <div className="row">
-        {/* Left: Webcam & Controls */}
+        {/* Left Side: Webcam and Controls */}
         <div className="col-12 col-md-6 d-flex flex-column align-items-center">
           <div className="d-flex gap-3 mb-4">
             <button
               className="btn btn-primary d-flex align-items-center gap-2"
-              onClick={() => startWebcam(videoRef, dispatch)}
+              onClick={handleStartWebcam}
               disabled={isWebcamActive || isProcessing}
             >
               {isProcessing ? (
@@ -86,7 +125,7 @@ const WebcamFeeds: React.FC = () => {
 
             <button
               className="btn btn-danger d-flex align-items-center gap-2"
-              onClick={() => stopWebcam(videoRef, dispatch)}
+              onClick={handleStopWebcam}
               disabled={!isWebcamActive}
             >
               <FaStop />
@@ -112,9 +151,7 @@ const WebcamFeeds: React.FC = () => {
               <input
                 type="file"
                 accept="image/*"
-                onChange={(e) =>
-                  handleImageUpload(e, dispatch, setIsProcessing, canvasRef)
-                }
+                onChange={handleImageUploadChange}
                 className="d-none"
                 disabled={isProcessing}
               />
@@ -155,14 +192,11 @@ const WebcamFeeds: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Detection Results */}
+        {/* Right Side: Results */}
         <div className="col-12 col-md-6 d-flex flex-column">
           <h2 className="h4 mb-4">
             {isProcessing ? (
-              <span className="d-flex align-items-center gap-2">
-                <FaSpinner className="fa-spin" />
-                Analyzing...
-              </span>
+              ''
             ) : faces.length > 0 ? (
               `Detected Faces (${faces.length})`
             ) : (
@@ -187,39 +221,45 @@ const WebcamFeeds: React.FC = () => {
               style={{
                 background:
                   "linear-gradient(to right, #48bb78, #3b82f6, #9333ea)",
+                boxShadow: "0 8px 16px rgba(20, 152, 137, 0.15)",
               }}
             >
-              <h5 className="text-primary mb-3">Application Features</h5>
+              <h5 className="text-light mb-3">
+                <i className="fas fa-info-circle me-2 "></i> Application Features
+              </h5>
               <ul className="list-unstyled text-start text-white">
                 <li className="mb-2 d-flex align-items-center">
                   <FaVideo className="text-dark me-2" />
-                  Start and stop webcam.
+                  Start and stop the webcam feed anytime.
                 </li>
                 <li className="mb-2 d-flex align-items-center">
                   <FaUserCheck className="text-dark me-2" />
-                  Facial recognition.
+                  Perform facial recognition on captured
+                  images.
                 </li>
                 <li className="mb-2 d-flex align-items-center">
                   <FaImage className="text-dark me-2" />
-                  Capture images.
+                  Display captured images with face overlays.
                 </li>
                 <li className="mb-2 d-flex align-items-center">
                   <FaUserTag className="text-dark me-2" />
-                  Show age/gender.
+                  Show details like name, age, gender and more.
                 </li>
                 <li className="mb-2 d-flex align-items-center">
                   <FaUsers className="text-dark me-2" />
-                  Multiple faces.
+                  Detect and display multiple faces in one
+                  image.
                 </li>
                 <li className="mb-2 d-flex align-items-center">
                   <FaSmileBeam className="text-dark me-2" />
-                  Emotions detection.
+                  Analyze emotions and expressions of detected
+                  faces.
                 </li>
               </ul>
             </div>
           ) : (
-            <div className="d-flex flex-column gap-3">
-              {faces.map((face: any, index: number) => (
+            <div className="d-flex flex-column gap-3 infos">
+              {faces.map((face, index) => (
                 <div
                   key={index}
                   className="bg-white p-3 rounded shadow"
@@ -243,7 +283,7 @@ const WebcamFeeds: React.FC = () => {
                     </div>
 
                     <div className="flex-grow-1">
-                      <div className="row">
+                      <div className="row info">
                         <div className="col-6">
                           <small className="text-muted">Age</small>
                           <div>{Math.round(face.age)} years</div>
@@ -260,34 +300,36 @@ const WebcamFeeds: React.FC = () => {
                       <div>
                         <small className="text-muted">Emotions</small>
                         <div className="mt-2">
-                          {Object.entries(face.expressions)
-                            .sort((a, b) => (b[1] as number) - (a[1] as number))
-                            .map(([emotion, value]) => (
-                              <div key={emotion} className="mb-1">
-                                <div className="d-flex justify-content-between">
-                                  <span>{emotion}</span>
-                                  <span>
-                                    {Math.round((value as number) * 100)}%
-                                  </span>
-                                </div>
-                                <div
-                                  className="progress"
-                                  style={{ height: "5px" }}
-                                >
+                          {face.expressions ? (
+                            Object.entries(face.expressions)
+                              .sort(([, a], [, b]) => b - a) // Sort by highest expression
+                              .map(([emotion, value]) => (
+                                <div key={emotion} className="mb-1">
+                                  <div className="d-flex justify-content-between">
+                                    <span>{emotion}</span>
+                                    <span>{Math.round(value * 100)}%</span>
+                                  </div>
                                   <div
-                                    className="progress-bar"
-                                    role="progressbar"
-                                    style={{
-                                      width: `${Math.round(
-                                        (value as number) * 100
-                                      )}%`,
-                                      backgroundColor:
-                                        FACE_COLORS[index % FACE_COLORS.length],
-                                    }}
-                                  />
+                                    className="progress"
+                                    style={{ height: "5px" }}
+                                  >
+                                    <div
+                                      className="progress-bar"
+                                      role="progressbar"
+                                      style={{
+                                        width: `${Math.round(value * 100)}%`,
+                                        backgroundColor:
+                                          FACE_COLORS[
+                                            index % FACE_COLORS.length
+                                          ],
+                                      }}
+                                    />
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              ))
+                          ) : (
+                            <div>No expressions detected</div>
+                          )}
                         </div>
                       </div>
                     </div>
