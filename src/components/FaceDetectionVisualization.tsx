@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import * as faceapi from "face-api.js";
-import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { useAppDispatch } from "../store/hooks";
 import { setFaces } from "../store/faceDetectionSlice";
 
 const FACE_COLORS = [
@@ -19,24 +19,22 @@ const FACE_COLORS = [
 ];
 
 interface FaceDetectionVisualizationProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
-  canvasRef: React.RefObject<HTMLCanvasElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
   isWebcamActive: boolean;
 }
 
 interface ExtendedFaceDetection
   extends faceapi.WithFaceExpressions<
-    faceapi.WithFaceLandmarks<
-      {
-        detection: faceapi.FaceDetection;
-      },
-      faceapi.FaceLandmarks68
+    faceapi.WithAge<
+      faceapi.WithGender<
+        faceapi.WithFaceLandmarks<
+          { detection: faceapi.FaceDetection },
+          faceapi.FaceLandmarks68
+        >
+      >
     >
-  > {
-  age?: number;
-  gender?: string;
-  genderProbability?: number;
-}
+  > {}
 
 const FaceDetectionVisualization: React.FC<FaceDetectionVisualizationProps> = ({
   videoRef,
@@ -44,7 +42,6 @@ const FaceDetectionVisualization: React.FC<FaceDetectionVisualizationProps> = ({
   isWebcamActive,
 }) => {
   const dispatch = useAppDispatch();
-  const faces = useAppSelector((state) => state.faceDetection.faces);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -65,7 +62,8 @@ const FaceDetectionVisualization: React.FC<FaceDetectionVisualizationProps> = ({
           .withAgeAndGender()
           .withFaceExpressions();
 
-        dispatch(setFaces(detections));
+        // Only dispatch the FaceDetections, not full ExtendedFaceDetections
+        dispatch(setFaces(detections.map((det) => det.detection)));
 
         const displaySize = {
           width: videoRef.current.videoWidth,
@@ -84,92 +82,71 @@ const FaceDetectionVisualization: React.FC<FaceDetectionVisualizationProps> = ({
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
 
-        resizedDetections.forEach(
-          (detection: ExtendedFaceDetection, index: number) => {
-            const color = FACE_COLORS[index % FACE_COLORS.length];
-            const box = detection.detection.box;
-            const expressions = detection.expressions;
-            const age = detection.age || 0;
-            const gender = detection.gender || "unknown";
-            const genderProbability = detection.genderProbability || 0;
+        resizedDetections.forEach((detection, index) => {
+          const color = FACE_COLORS[index % FACE_COLORS.length];
+          const { box, score } = detection.detection;
+          const {
+            expressions,
+            age = 0,
+            gender = "unknown",
+            genderProbability = 0,
+          } = detection;
 
-            // Draw face bounding box
-            ctx.save();
-            ctx.shadowColor = color;
-            ctx.shadowBlur = 10;
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.roundRect(box.x, box.y, box.width, box.height, 8);
-            ctx.stroke();
-            ctx.fillStyle = `${color}20`;
-            ctx.fill();
-            ctx.restore();
+          // Draw bounding box
+          ctx.save();
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 10;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.roundRect(box.x, box.y, box.width, box.height, 8);
+          ctx.stroke();
+          ctx.fillStyle = `${color}20`;
+          ctx.fill();
+          ctx.restore();
 
-            // Draw face landmarks (in white for better visibility)
-            faceapi.draw.drawFaceLandmarks(canvas, [detection], {
-              lineWidth: 1,
-              color: "#FFFFFF",
-              drawLines: true,
-              drawPoints: true,
-              pointSize: 2,
-            });
+          // Draw landmarks
+          faceapi.draw.drawFaceLandmarks(canvas, [detection]);
 
-            // Draw face expressions (using the face's color)
-            faceapi.draw.drawFaceExpressions(canvas, [detection], {
-              primaryColor: color,
-              secondaryColor: color,
-              lineWidth: 2,
-              minConfidence: 0.1,
-              opacity: 0.8,
-            });
+          // Draw expressions
+          faceapi.draw.drawFaceExpressions(canvas, [detection]);
 
-            // Get dominant expression
-            const dominantExpression = Object.entries(expressions).sort(
-              (a, b) => b[1] - a[1]
-            )[0][0];
+          // Get dominant expression
+          const dominantExpression = Object.entries(expressions).sort(
+            (a, b) => (b[1] as number) - (a[1] as number)
+          )[0][0];
 
-            // Draw info box
-            const infoBoxWidth = 180;
-            const infoBoxHeight = 80;
-            const infoBoxX = Math.max(10, box.x);
-            const infoBoxY = box.y - infoBoxHeight - 10;
+          // Draw info box
+          const infoBoxWidth = 180;
+          const infoBoxHeight = 80;
+          const infoBoxX = Math.max(10, box.x);
+          const infoBoxY = box.y - infoBoxHeight - 10;
 
-            ctx.save();
-            ctx.fillStyle = `${color}CC`;
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.roundRect(infoBoxX, infoBoxY, infoBoxWidth, infoBoxHeight, 5);
-            ctx.fill();
-            ctx.stroke();
+          ctx.save();
+          ctx.fillStyle = `${color}CC`;
+          ctx.strokeStyle = "white";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(infoBoxX, infoBoxY, infoBoxWidth, infoBoxHeight, 5);
+          ctx.fill();
+          ctx.stroke();
 
-            ctx.fillStyle = "white";
-            ctx.font = "bold 14px Arial";
-            ctx.fillText(`Face ${index + 1}`, infoBoxX + 10, infoBoxY + 20);
-            ctx.font = "12px Arial";
-            ctx.fillText(
-              `Age: ${Math.round(age)}`,
-              infoBoxX + 10,
-              infoBoxY + 40
-            );
-            ctx.fillText(
-              `${gender} (${Math.round(genderProbability * 100)}%)`,
-              infoBoxX + 10,
-              infoBoxY + 60
-            );
-            ctx.restore();
+          ctx.fillStyle = "white";
+          ctx.font = "bold 14px Arial";
+          ctx.fillText(`Face ${index + 1}`, infoBoxX + 10, infoBoxY + 20);
+          ctx.font = "12px Arial";
+          ctx.fillText(`Age: ${Math.round(age)}`, infoBoxX + 10, infoBoxY + 40);
+          ctx.fillText(
+            `${gender} (${Math.round(genderProbability * 100)}%)`,
+            infoBoxX + 10,
+            infoBoxY + 60
+          );
+          ctx.restore();
 
-            // Draw confidence indicator
-            ctx.fillStyle = `${color}AA`;
-            ctx.fillRect(
-              box.x,
-              box.y - 8,
-              box.width * detection.detection.score,
-              4
-            );
-          }
-        );
+          // Draw confidence bar
+          ctx.fillStyle = `${color}AA`;
+          ctx.fillRect(box.x, box.y - 8, box.width * score, 4);
+        });
       } catch (error) {
         console.error("Error detecting faces:", error);
       }

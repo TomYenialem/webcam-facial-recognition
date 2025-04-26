@@ -1,3 +1,4 @@
+// src/utils/WebcamFunctions.ts
 import { useAppDispatch } from "../store/hooks";
 import { setWebcamActive, setFaces } from "../store/faceDetectionSlice";
 import * as faceapi from "face-api.js";
@@ -15,12 +16,25 @@ export const FACE_COLORS = [
   "#69F0AE",
   "#B2FF59",
   "#EEFF41",
-];
+] as const;
+
+type FaceDetectionWithAllFeatures = faceapi.WithFaceExpressions<
+  faceapi.WithAge<
+    faceapi.WithGender<
+      faceapi.WithFaceLandmarks<
+        {
+          detection: faceapi.FaceDetection;
+        },
+        faceapi.FaceLandmarks68
+      >
+    >
+  >
+>;
 
 export const startWebcam = async (
   videoRef: React.RefObject<HTMLVideoElement>,
   dispatch: ReturnType<typeof useAppDispatch>
-) => {
+): Promise<void> => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -29,13 +43,12 @@ export const startWebcam = async (
         facingMode: "user",
       },
     });
+
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
       videoRef.current.onloadedmetadata = () => {
         if (videoRef.current) {
-          const canvas = document.createElement("canvas");
-          canvas.width = videoRef.current.videoWidth;
-          canvas.height = videoRef.current.videoHeight;
+          videoRef.current.play();
         }
       };
     }
@@ -48,8 +61,8 @@ export const startWebcam = async (
 export const stopWebcam = (
   videoRef: React.RefObject<HTMLVideoElement>,
   dispatch: ReturnType<typeof useAppDispatch>
-) => {
-  const stream = videoRef.current?.srcObject as MediaStream;
+): void => {
+  const stream = videoRef.current?.srcObject as MediaStream | undefined;
   if (stream) {
     stream.getTracks().forEach((track) => track.stop());
   }
@@ -62,37 +75,20 @@ export const stopWebcam = (
 
 const drawEnhancedExpressions = (
   canvas: HTMLCanvasElement,
-  detection: faceapi.WithFaceExpressions<
-    faceapi.WithFaceLandmarks<
-      {
-        detection: faceapi.FaceDetection;
-      },
-      faceapi.FaceLandmarks68
-    >
-  >,
+  detection: FaceDetectionWithAllFeatures,
   color: string
-) => {
+): void => {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  // Enhanced expression drawing
   const expressions = detection.expressions;
-  const maxProbability = Math.max(...Object.values(expressions));
-  const dominantExpression = Object.entries(expressions).reduce((a, b) =>
-    a[1] > b[1] ? a : b
-  )[0];
+  const expressionEntries = Object.entries(expressions) as [string, number][];
+  const sortedExpressions = expressionEntries.sort((a, b) => b[1] - a[1]);
+  const [dominantExpression, maxProbability] = sortedExpressions[0];
 
-  // Only draw if confidence is high enough
   if (maxProbability > 0.2) {
-    faceapi.draw.drawFaceExpressions(canvas, [detection], {
-      primaryColor: color,
-      secondaryColor: color,
-      lineWidth: 3,
-      minConfidence: 0.2,
-      opacity: 0.9,
-    });
+    faceapi.draw.drawFaceExpressions(canvas, [detection], 0.2);
 
-    // Draw dominant expression label
     const box = detection.detection.box;
     ctx.fillStyle = `${color}CC`;
     ctx.strokeStyle = "white";
@@ -117,7 +113,7 @@ export const handleImageUpload = async (
   dispatch: ReturnType<typeof useAppDispatch>,
   setIsProcessing: React.Dispatch<React.SetStateAction<boolean>>,
   canvasRef: React.RefObject<HTMLCanvasElement>
-) => {
+): Promise<void> => {
   if (!e.target.files?.length) return;
   setIsProcessing(true);
 
@@ -125,13 +121,13 @@ export const handleImageUpload = async (
   const image = await faceapi.bufferToImage(file);
 
   try {
-    const detections = await faceapi
+    const detections = (await faceapi
       .detectAllFaces(image, new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks()
       .withAgeAndGender()
-      .withFaceExpressions();
+      .withFaceExpressions()) as FaceDetectionWithAllFeatures[];
 
-    dispatch(setFaces(detections));
+    dispatch(setFaces(detections as unknown as faceapi.FaceDetection[]));
 
     const canvas = canvasRef.current;
     if (canvas) {
@@ -146,7 +142,7 @@ export const handleImageUpload = async (
 
         resizedDetections.forEach((detection, index) => {
           const color = FACE_COLORS[index % FACE_COLORS.length];
-          const { age, gender, genderProbability } = detection as any;
+          const { age, gender, genderProbability } = detection;
           const box = detection.detection.box;
 
           // Draw face box
@@ -163,14 +159,9 @@ export const handleImageUpload = async (
           ctx.restore();
 
           // Draw landmarks
-          faceapi.draw.drawFaceLandmarks(canvas, [detection], {
-            lineWidth: 1,
-            color: color,
-            drawLines: true,
-            drawPoints: true,
-          });
+          faceapi.draw.drawFaceLandmarks(canvas, [detection]);
 
-          // Draw expressions with enhanced visibility
+          // Draw expressions
           drawEnhancedExpressions(canvas, detection, color);
 
           // Draw info box
