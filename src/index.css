@@ -10,3 +10,9 @@ body{
   height: 100vh;
    background: linear-gradient(to right, #48bb78, #3b82f6, #9333ea) !important;
 }
+@media (max-width: 768px) {
+  .infos{
+   margin-top: 370px !important;
+   
+  }
+}

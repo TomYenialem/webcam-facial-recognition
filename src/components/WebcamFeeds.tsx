@@ -1,9 +1,13 @@
-import React, { useRef, useEffect ,useState} from "react";
-import * as faceapi from "face-api.js";
+import React, { useRef, useState, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
-import { setFaces, setWebcamActive } from "../store/faceDetectionSlice";
-import { FaCamera, FaStop, FaUpload, FaSpinner } from "react-icons/fa"; 
+import { FaCamera, FaStop, FaUpload, FaSpinner } from "react-icons/fa";
+import { startWebcam, stopWebcam, handleImageUpload } from "./WebcamFunctions";
+import FaceDetectionVisualization from "./FaceDetectionVisualization";
 
+
+
+
+import * as faceapi from "face-api.js";
 import {
   FaVideo,
   FaUserCheck,
@@ -13,7 +17,6 @@ import {
   FaSmileBeam,
 } from "react-icons/fa";
 
-// Color palette for different faces
 const FACE_COLORS = [
   "#FF5252",
   "#FF4081",
@@ -29,11 +32,11 @@ const FACE_COLORS = [
   "#EEFF41",
 ];
 
-const WebcamFeed: React.FC = () => {
+const WebcamFeeds: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
+  const dispatch = useAppDispatch();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const dispatch = useAppDispatch();
   const { faces, isWebcamActive } = useAppSelector(
     (state) => state.faceDetection
   );
@@ -63,298 +66,6 @@ const WebcamFeed: React.FC = () => {
     loadModels();
   }, []);
 
-  // Enhanced face detection with visual overlays
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-
-    const detectFaces = async () => {
-      if (!videoRef.current || !canvasRef.current) return;
-
-      try {
-        // Detect faces with enhanced options
-        const detections = await faceapi
-          .detectAllFaces(
-            videoRef.current,
-            new faceapi.TinyFaceDetectorOptions({
-              inputSize: 512,
-              scoreThreshold: 0.5,
-            })
-          )
-          .withFaceLandmarks()
-          .withAgeAndGender()
-          .withFaceExpressions();
-
-        dispatch(setFaces(detections));
-
-        // Set canvas dimensions to match video
-        const displaySize = {
-          width: videoRef.current.videoWidth,
-          height: videoRef.current.videoHeight,
-        };
-        faceapi.matchDimensions(canvasRef.current, displaySize);
-        const resizedDetections = faceapi.resizeResults(
-          detections,
-          displaySize
-        );
-
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          // Clear and draw the current video frame
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-
-          // Draw visual indicators for each face
-          resizedDetections.forEach((detection, index) => {
-            const color = FACE_COLORS[index % FACE_COLORS.length];
-            const { age, gender, genderProbability, expressions } =
-              detection as any;
-            const box = detection.detection.box;
-
-            // 1. Draw enhanced bounding box with shadow
-            ctx.save();
-            ctx.shadowColor = color;
-            ctx.shadowBlur = 10;
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.roundRect(box.x, box.y, box.width, box.height, 8);
-            ctx.stroke();
-
-            // Semi-transparent fill
-            ctx.fillStyle = `${color}20`;
-            ctx.fill();
-            ctx.restore();
-
-            // 2. Draw facial landmarks
-            faceapi.draw.drawFaceLandmarks(canvas, [detection], {
-              lineWidth: 1,
-              color: color,
-              drawLines: true,
-              drawPoints: true,
-            });
-
-            // 3. Draw face expressions
-            faceapi.draw.drawFaceExpressions(canvas, [detection], {
-              primaryColor: color,
-              secondaryColor: "#FFFFFF",
-              minConfidence: 0.1,
-            });
-
-            // 4. Draw comprehensive info overlay
-            const dominantExpression = Object.entries(expressions).sort(
-              (a, b) => b[1] - a[1]
-            )[0][0];
-
-            // Create info box
-            const infoBoxWidth = 180;
-            const infoBoxHeight = 80;
-            const infoBoxX = Math.max(10, box.x);
-            const infoBoxY = box.y - infoBoxHeight - 10;
-
-            // Draw info box background
-            ctx.save();
-            ctx.fillStyle = `${color}CC`;
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.roundRect(infoBoxX, infoBoxY, infoBoxWidth, infoBoxHeight, 5);
-            ctx.fill();
-            ctx.stroke();
-
-            // Draw info text
-            ctx.fillStyle = "white";
-            ctx.font = "bold 14px Arial";
-            ctx.fillText(`Face ${index + 1}`, infoBoxX + 10, infoBoxY + 20);
-            ctx.font = "12px Arial";
-            ctx.fillText(
-              `Age: ${Math.round(age)}`,
-              infoBoxX + 10,
-              infoBoxY + 40
-            );
-            ctx.fillText(
-              `${gender} (${Math.round(genderProbability * 100)}%)`,
-              infoBoxX + 10,
-              infoBoxY + 60
-            );
-            ctx.restore();
-
-            // 5. Draw detection confidence indicator
-            ctx.fillStyle = `${color}AA`;
-            ctx.fillRect(
-              box.x,
-              box.y - 8,
-              box.width * detection.detection.score,
-              4
-            );
-          });
-        }
-      } catch (error) {
-        console.error("Error detecting faces:", error);
-      }
-    
-    };
-
-    if (isWebcamActive) {
-      interval = setInterval(detectFaces, 300);
-    }
-
-    return () => clearInterval(interval);
-  }, [isWebcamActive, dispatch]);
-
-  const startWebcam = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: "user",
-        },
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current && canvasRef.current) {
-            canvasRef.current.width = videoRef.current.videoWidth;
-            canvasRef.current.height = videoRef.current.videoHeight;
-          }
-        };
-      }
-      dispatch(setWebcamActive(true));
-    } catch (error) {
-      console.error("Error accessing webcam:", error);
-    }
-  };
-
-  const stopWebcam = () => {
-    const stream = videoRef.current?.srcObject as MediaStream;
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    dispatch(setWebcamActive(false));
-    dispatch(setFaces([]));
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.length) return;
-    if (isProcessing) return; // Prevent multiple uploads at once
-    setIsProcessing(true); // Set processing state
-
-    const file = e.target.files[0];
-    const image = await faceapi.bufferToImage(file);
-
-    try {
-      const detections = await faceapi
-        .detectAllFaces(image, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withAgeAndGender()
-        .withFaceExpressions();
-
-      dispatch(setFaces(detections));
-
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const displaySize = { width: image.width, height: image.height };
-        faceapi.matchDimensions(canvas, displaySize);
-        const resizedDetections = faceapi.resizeResults(
-          detections,
-          displaySize
-        );
-
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-          resizedDetections.forEach((detection, index) => {
-            const color = FACE_COLORS[index % FACE_COLORS.length];
-            const { age, gender, genderProbability, expressions } =
-              detection as any;
-            const box = detection.detection.box;
-
-            // Draw enhanced visual indicators (same as webcam version)
-            ctx.save();
-            ctx.shadowColor = color;
-            ctx.shadowBlur = 10;
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.roundRect(box.x, box.y, box.width, box.height, 8);
-            ctx.stroke();
-            ctx.fillStyle = `${color}20`;
-            ctx.fill();
-            ctx.restore();
-
-            faceapi.draw.drawFaceLandmarks(canvas, [detection], {
-              lineWidth: 1,
-              color: color,
-              drawLines: true,
-              drawPoints: true,
-            });
-
-            faceapi.draw.drawFaceExpressions(canvas, [detection], {
-              primaryColor: color,
-              secondaryColor: "#FFFFFF",
-              minConfidence: 0.1,
-            });
-
-            // Info box
-            const dominantExpression = Object.entries(expressions).sort(
-              (a, b) => b[1] - a[1]
-            )[0][0];
-
-            const infoBoxWidth = 180;
-            const infoBoxHeight = 80;
-            const infoBoxX = Math.max(10, box.x);
-            const infoBoxY = box.y - infoBoxHeight - 10;
-
-            ctx.save();
-            ctx.fillStyle = `${color}CC`;
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.roundRect(infoBoxX, infoBoxY, infoBoxWidth, infoBoxHeight, 5);
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.fillStyle = "white";
-            ctx.font = "bold 14px Arial";
-            ctx.fillText(`Face ${index + 1}`, infoBoxX + 10, infoBoxY + 20);
-            ctx.font = "12px Arial";
-            ctx.fillText(
-              `Age: ${Math.round(age)}`,
-              infoBoxX + 10,
-              infoBoxY + 40
-            );
-            ctx.fillText(
-              `${gender} (${Math.round(genderProbability * 100)}%)`,
-              infoBoxX + 10,
-              infoBoxY + 60
-            );
-            ctx.restore();
-
-            ctx.fillStyle = `${color}AA`;
-            ctx.fillRect(
-              box.x,
-              box.y - 8,
-              box.width * detection.detection.score,
-              4
-            );
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Error processing image:", error);
-    }
-    finally {
-      setIsProcessing(false); // Reset processing state
-    }
-    
-  };
-
   return (
     <div className="container py-5">
       <div className="row">
@@ -363,7 +74,7 @@ const WebcamFeed: React.FC = () => {
           <div className="d-flex gap-3 mb-4">
             <button
               className="btn btn-primary d-flex align-items-center gap-2"
-              onClick={startWebcam}
+              onClick={() => startWebcam(videoRef, dispatch)}
               disabled={isWebcamActive || isProcessing}
             >
               {isProcessing ? (
@@ -381,7 +92,7 @@ const WebcamFeed: React.FC = () => {
 
             <button
               className="btn btn-danger d-flex align-items-center gap-2"
-              onClick={stopWebcam}
+              onClick={() => stopWebcam(videoRef, dispatch)}
               disabled={!isWebcamActive}
             >
               <FaStop />
@@ -407,14 +118,16 @@ const WebcamFeed: React.FC = () => {
               <input
                 type="file"
                 accept="image/*"
-                onChange={handleImageUpload}
+                onChange={(e) =>
+                  handleImageUpload(e, dispatch, setIsProcessing, canvasRef)
+                }
                 className="d-none"
                 disabled={isProcessing}
               />
             </label>
           </div>
 
-          <div className="position-relative w-100">
+          <div className="position-relative w-100  ">
             <video
               ref={videoRef}
               width="100%"
@@ -442,7 +155,7 @@ const WebcamFeed: React.FC = () => {
                     <FaSpinner className="fa-spin fs-1 mb-3" />
                     <p>Processing image...</p>
                   </div>
-                ) }
+                )}
               </div>
             )}
           </div>
@@ -517,7 +230,7 @@ const WebcamFeed: React.FC = () => {
               </ul>
             </div>
           ) : (
-            <div className="d-flex flex-column gap-3">
+            <div className="d-flex flex-column gap-3 infos">
               {faces.map((face: any, index) => (
                 <div
                   key={index}
@@ -542,8 +255,8 @@ const WebcamFeed: React.FC = () => {
                     </div>
 
                     <div className="flex-grow-1">
-                      <div className="row mb-2">
-                        <div className="col-6">
+                      <div className="row info">
+                        <div className="col-6 ">
                           <small className="text-muted">Age</small>
                           <div>{Math.round(face.age)} years</div>
                         </div>
@@ -597,8 +310,14 @@ const WebcamFeed: React.FC = () => {
           )}
         </div>
       </div>
+
+      <FaceDetectionVisualization
+        videoRef={videoRef}
+        canvasRef={canvasRef}
+        isWebcamActive={isWebcamActive}
+      />
     </div>
   );
 };
 
-export default WebcamFeed;
+export default WebcamFeeds;

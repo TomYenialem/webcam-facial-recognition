@@ -1,7 +1,7 @@
 import React from "react";
 import { Provider } from "react-redux";
 import { store } from "./store/store";
-import WebcamFeed from "./components/WebcamFeed";
+import WebcamFeeds from "./components/WebcamFeeds";
 
 const App: React.FC = () => {
   return (
@@ -11,7 +11,10 @@ const App: React.FC = () => {
           <h1 className="text-center d-block ">Facial Recognition App</h1>
         </header>
         <main className="container mx-auto p-4">
-          <WebcamFeed />
+          {/* <WebcamFeed /> */}
+          <div className="text-center">
+            <WebcamFeeds/>
+          </div>
         </main>
       </div>
     </Provider>
